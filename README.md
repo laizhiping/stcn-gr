@@ -12,13 +12,13 @@ This repository contains the source codes of our work: *STCN-GR: Spatial-Tempora
 The datasets and source codes should be organized by:
 ```
 dataset
-  - bandmyo
+  - capgmyo
     - subject-1
       - session-1
         - gesture-1
           - trial-1.mat
           ...
-  - capgmyo
+  - bandmyo
 stcn-gr
   - config
   - stcn

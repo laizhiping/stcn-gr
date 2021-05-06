@@ -58,9 +58,6 @@ class DataReader(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.indexes)
 
-    def init_dataset(dataset_list):
-        return zip(*dataset_list)
-
     def shuffle(self):
         np.random.shuffle(self.indexes)
 
@@ -95,8 +92,6 @@ class DataReader(torch.utils.data.Dataset):
         self.y = y
 
     def preprocess(self):
-        window_size = self.args.window_size
-        window_step = self.args.window_step
         num_trails = len(self.X)
 
         if self.args.dataset_name == "cslhdemg":
