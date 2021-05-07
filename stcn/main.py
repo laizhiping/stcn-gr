@@ -17,7 +17,14 @@ class Solver():
         self.init_device()
         self.check_dirs()
         self.get_logger_writer()
-        # self.get_model()
+        self.get_model()
+        self.dump_info()
+
+    def dump_info(self):
+        for k, v in vars(self.args).items():
+            self.logger.info(f"{k}: {v}")
+        
+        self.logger.info(f"{self.model}")
 
     def init_device(self):
         self.device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
@@ -54,9 +61,7 @@ class Solver():
 
     def start(self, task):
         self.logger.info(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-        for k, v in vars(self.args).items():
-            self.logger.info(f"{k}: {v}")
-
+        self.logger.info(f"Task {task} {self.args.stage} ")
         if task == "intra-session":
             self.intra_session()
         elif task == "inter-session":
@@ -82,7 +87,7 @@ class Solver():
         if self.args.stage == "pretrain":
             pass
         elif self.args.stage == "train":
-            self.accuracy = np.zeros((len(subjects), len(sessions))) # 存储结果
+            accuracy = np.zeros((len(subjects), len(sessions)))
 
             for i, subject in enumerate(subjects):
                 for j, session in enumerate(sessions):
@@ -100,18 +105,18 @@ class Solver():
                     self.logger.info(f"{subject}, {session}, {gestures}, {train_trials}, {test_trials}")
 
                     self.train_loader = self.get_loader([subject], [session], gestures, train_trials)
-                    self.test_loader = self.get_loader([subject], [session], gestures, test_trials) ####
+                    self.test_loader = self.get_loader([subject], [session], gestures, test_trials)
                     trial_acc = self.train(subject, session)
 
-                    self.accuracy[i][j] = trial_acc
+                    accuracy[i][j] = trial_acc
 
 
-            self.logger.info(f"All session accuracy:\n {self.accuracy}")
-            self.logger.info(f"All subject average accuracy:\n {self.accuracy.mean()}")
+            self.logger.info(f"All session accuracy:\n {accuracy}")
+            self.logger.info(f"All subject average accuracy:\n {accuracy.mean()}")
 
 
         elif self.args.stage == "test":
-            self.accuracy = np.zeros((len(subjects), len(sessions))) # 存储结果
+            accuracy = np.zeros((len(subjects), len(sessions)))
 
             for i, subject in enumerate(subjects):
                 for j, session in enumerate(sessions):
@@ -125,17 +130,16 @@ class Solver():
                         metric = self.test()
                         test_last_acc = metric["accuracy"]
                         self.logger.info(f"Test subject {subject} session {session}: {test_last_acc}")
-                        self.accuracy[i][j] = test_last_acc
+                        accuracy[i][j] = test_last_acc
                     else:
                         self.logger.info(f"{path} not exists")
                         exit(1)
-            self.logger.info(f"All session accuracy:\n {self.accuracy}")
+            self.logger.info(f"All session accuracy:\n{accuracy}\n Avg: {accuracy.mean()}")
 
         else:
             raise ValueError
 
-    # def get_loader(self, subjects, sessions, gestures, trials, is_train=True):
-    #     dataset = data_reader.DataReader(subjects, sessions, gestures, trials, self.config, is_train)
+
     def get_loader(self, subjects, sessions, gestures, trials):
         dataset = data_reader.DataReader(subjects, sessions, gestures, trials, self.args)
 
@@ -145,7 +149,6 @@ class Solver():
             drop_last=False,
             shuffle=True,
             num_workers=0)
-
         return data_loader
 
 
@@ -177,11 +180,8 @@ class Solver():
                 loss.backward()
                 self.optimizer.step()
 
-                # print(f"Step [{step}/{len(self.train_loader)}]\tloss: {loss}")
-
                 epoch_loss += loss.item()
                 correct += (output.argmax(dim=1) == y).sum()
-                # print(len(output.tolist()))
 
                 true_label.extend(y.tolist())
                 pred_label.extend(output.argmax(dim=1).tolist())
@@ -218,7 +218,6 @@ class Solver():
         return test_last_acc
 
     def test(self):
-        # print(f"Begin test")
         self.model.eval()
         metric = {}
         loss = 0
@@ -229,7 +228,6 @@ class Solver():
             x = x.float().to(self.device)
             y = y.to(self.device)
             output = self.model(x)
-            # print(output.shape)
             loss1 = self.criterion(output, y)
             loss += loss1.item()
             correct += (output.argmax(dim=1) == y).sum()
@@ -241,7 +239,6 @@ class Solver():
 
         metric["correct"] = correct
         metric["all"] = len(self.test_loader.dataset)
-        # print(len(data_loader.dataset))
         metric["accuracy"] = correct*1.0 / len(self.test_loader.dataset)
         metric["loss"] = loss
         metric["pred_label"] = pred_label
@@ -297,8 +294,4 @@ class Solver():
 
         self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=self.args.milestones, gamma=self.args.gamma)
 
-
-        # self.scheduler = GradualWarmupScheduler(self.optimizer, total_epoch=self.arg.warm_up_epoch,
-        #                                            after_scheduler=lr_scheduler_pre)
-        # self.logger.info('using warm up, epoch: {}'.format(self.arg.warm_up_epoch))
 
