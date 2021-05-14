@@ -245,7 +245,7 @@ class Model(nn.Module):
         x = x.mean(2)
         # print(x.shape) # torch.Size([16, 27])
 
-        x = self.dropout(x)
+        # x = self.dropout(x)
         return x
 
 if __name__ == "__main__":

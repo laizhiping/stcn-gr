@@ -1,4 +1,7 @@
 model/
 log/
 runs/
+__pycache__
+.vscode
+
 scripts/
