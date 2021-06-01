@@ -1,13 +1,13 @@
 import os
+from sys import path_hooks
 import time
 import torch
 import numpy as np
+import random
 from torch.utils.tensorboard import SummaryWriter
-from sklearn.metrics import confusion_matrix
-import yaml
 
-from stcn.utils import log, data_reader
-from stcn.net import egcn
+from solver.utils import log, data_reader
+from solver.stcn import stcn
 
 class Solver():
     def __init__(self, args):
@@ -55,7 +55,7 @@ class Solver():
 
     def get_model(self):
         num_gestures= len(self.args.gestures)
-        self.model = egcn.Model(num_channels=1, num_points=self.args.num_channels, num_classes=num_gestures)
+        self.model = stcn.STCN(num_channels=1, num_points=self.args.num_channels, num_classes=num_gestures)
         self.model.to(self.device)
 
 
@@ -154,15 +154,23 @@ class Solver():
 
     def train(self, subject, session):
         self.logger.info(f"Begin train")
-
         self.get_optimizer()
 
+        path = os.path.join(self.args.model_path, f"trained-{self.args.dataset_name}-subject{subject}-session{session}.pkl")
+        
         metric = self.test()
-        best = metric["accuracy"]
-        self.logger.info("Initial test_accuracy: {}".format(best))
+        init_acc = metric["accuracy"]
 
-        train_last_acc = 0.0
-        test_last_acc = 0.0
+        if os.path.exists(path):
+            self.model.load_state_dict(torch.load(path))
+            metric = self.test()
+            last_acc = metric["accuracy"]
+        else:
+            last_acc = 0
+
+        self.logger.info("Initial: {}, last {}".format(init_acc, last_acc))
+
+        best_acc = last_acc
         for epoch in range(1, self.args.num_epochs+1):
             self.model.train()
             epoch_loss = 0
@@ -189,7 +197,6 @@ class Solver():
             self.scheduler.step()
 
             train_acc = 1.0 * correct / len(self.train_loader.dataset)
-            train_last_acc = train_acc
 
 
             metric = self.test()
@@ -198,10 +205,9 @@ class Solver():
                 # self.draw_confusion(metric["true_label"], metric["pred_label"], "test")
                 pass
 
-            test_last_acc = metric["accuracy"]
-
-            path = os.path.join(self.args.model_path, f"trained-{self.args.dataset_name}-subject{subject}-session{session}.pkl")
-            torch.save(self.model.state_dict(), path)
+            if metric["accuracy"] > best_acc:
+                best_acc = metric["accuracy"]
+                torch.save(self.model.state_dict(), path)
 
 
             self.writer.add_scalars(main_tag="loss", tag_scalar_dict={"train_loss": epoch_loss, "valid_loss": metric["loss"]},
@@ -214,8 +220,8 @@ class Solver():
                                 train_acc, correct, len(self.train_loader.dataset),
                                 metric["accuracy"], metric["correct"], metric["all"]))
 
-        self.logger.info(f"Final test accuracy: {test_last_acc}")
-        return test_last_acc
+        self.logger.info(f"Best: {best_acc}")
+        return best_acc
 
     def test(self):
         self.model.eval()

@@ -1,6 +1,6 @@
 import argparse
 import yaml
-from stcn import Solver
+from solver import Solver
 
 def get_parser():
     parser = argparse.ArgumentParser(description="sEMG-based gesture recognition")
