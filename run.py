@@ -27,7 +27,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     with open(args.config, 'r') as f:
-        default_arg = yaml.load(f, Loader=yaml.FullLoader)
+        # default_arg = yaml.load(f, Loader=yaml.FullLoader)
+        default_arg = yaml.load(f)
 
     # update args if specified on the command line
     args = vars(args)

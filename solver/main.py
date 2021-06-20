@@ -55,8 +55,8 @@ class Solver():
 
     def get_model(self):
         num_gestures= len(self.args.gestures)
-        self.model = stcn.STCN(num_channels=1, num_points=self.args.num_channels, num_classes=num_gestures)
-        self.model.to(self.device)
+        model = stcn.STCN(num_channels=1, num_points=self.args.num_channels, num_classes=num_gestures)
+        return model.to(self.device)
 
 
     def start(self, task):
@@ -83,44 +83,37 @@ class Solver():
         sessions = self.args.sessions
         gestures = self.args.gestures
         trials = self.args.trials
+        train_trials = self.args.train_trials
+        test_trials = self.args.test_trials
 
         if self.args.stage == "pretrain":
             pass
         elif self.args.stage == "train":
             accuracy = np.zeros((len(subjects), len(sessions)))
-
             for i, subject in enumerate(subjects):
                 for j, session in enumerate(sessions):
                     self.logger.info(f"Begin training subject {subject} session {session}")
-
-                    self.get_model()
-                    path = os.path.join(self.args.model_path, f"pretrain-{self.args.dataset_name}.pkl")
-                    if self.args.need_pretrain:
-                        if os.path.exists(path):
-                            self.model.load_state_dict(torch.load(path))
-                            self.logger.info("load pretrain model successfully")
-                    train_trials = self.args.train_trials
-                    test_trials = self.args.test_trials
-
                     self.logger.info(f"{subject}, {session}, {gestures}, {train_trials}, {test_trials}")
+                    self.model = self.get_model()
+                    # path = os.path.join(self.args.model_path, f"pretrain-{self.args.dataset_name}.pkl")
+                    # if self.args.need_pretrain:
+                    #     if os.path.exists(path):
+                    #         self.model.load_state_dict(torch.load(path))
+                    #         self.logger.info("load pretrain model successfully")
 
                     self.train_loader = self.get_loader([subject], [session], gestures, train_trials)
                     self.test_loader = self.get_loader([subject], [session], gestures, test_trials)
                     trial_acc = self.train(subject, session)
-
                     accuracy[i][j] = trial_acc
-
-
             self.logger.info(f"All session accuracy:\n {accuracy}")
             self.logger.info(f"All subject average accuracy:\n {accuracy.mean()}")
 
 
         elif self.args.stage == "test":
             accuracy = np.zeros((len(subjects), len(sessions)))
-
             for i, subject in enumerate(subjects):
                 for j, session in enumerate(sessions):
-                    self.get_model()
+                    self.model = self.get_model()
                     path = os.path.join(self.args.model_path, f"trained-{self.args.dataset_name}-subject{subject}-session{session}.pkl")
                     if os.path.exists(path):
                         self.model.load_state_dict(torch.load(path))
@@ -155,13 +148,11 @@ class Solver():
     def train(self, subject, session):
         self.logger.info(f"Begin train")
         self.get_optimizer()
-
         path = os.path.join(self.args.model_path, f"trained-{self.args.dataset_name}-subject{subject}-session{session}.pkl")
-        
         metric = self.test()
         init_acc = metric["accuracy"]
 
-        if os.path.exists(path):
+        if not os.path.exists(path):
             self.model.load_state_dict(torch.load(path))
             metric = self.test()
             last_acc = metric["accuracy"]
@@ -175,7 +166,6 @@ class Solver():
             self.model.train()
             epoch_loss = 0
             correct = 0
-
             true_label = []
             pred_label = []
             self.train_loader.dataset.shuffle()
@@ -187,18 +177,12 @@ class Solver():
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
-
                 epoch_loss += loss.item()
                 correct += (output.argmax(dim=1) == y).sum()
-
                 true_label.extend(y.tolist())
                 pred_label.extend(output.argmax(dim=1).tolist())
-
             self.scheduler.step()
-
             train_acc = 1.0 * correct / len(self.train_loader.dataset)
-
-
             metric = self.test()
             if True or epoch == self.args.num_epochs:
                 # self.draw_confusion(true_label, pred_label, "train")
@@ -209,12 +193,10 @@ class Solver():
                 best_acc = metric["accuracy"]
                 torch.save(self.model.state_dict(), path)
 
-
             self.writer.add_scalars(main_tag="loss", tag_scalar_dict={"train_loss": epoch_loss, "valid_loss": metric["loss"]},
                                global_step=epoch)
             self.writer.add_scalars(main_tag="accuracy", tag_scalar_dict={"train_accuracy": train_acc, "valid_acc": metric["accuracy"]},
                                global_step= epoch)
-
             self.logger.info("Epoch [{:5d}/{:5d}]\t train_loss: {:.08f}\t test_loss: {:.08f}\t\t train_accuracy: {:.06f} [{}/{}]\t test_accuracy: {:.06f} [{}/{}]"
                         .format(epoch, self.args.num_epochs, epoch_loss, metric["loss"],
                                 train_acc, correct, len(self.train_loader.dataset),

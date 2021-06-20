@@ -176,5 +176,5 @@ class STCN(nn.Module):
         # N, C2
         x = x.mean(2)
 
-        x = self.dropout(x)
+        # x = self.dropout(x)
         return x
