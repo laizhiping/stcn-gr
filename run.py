@@ -44,4 +44,4 @@ if __name__ == "__main__":
     #     print(k, ": ", v)
     # print(yaml.dump(vars(args)))
     solver = Solver(args)
-    solver.start(task="intra-session")
+    solver.start(task="intra_session")

@@ -62,11 +62,11 @@ class Solver():
     def start(self, task):
         self.logger.info(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
         self.logger.info(f"Task {task} {self.args.stage} ")
-        if task == "intra-session":
+        if task == "intra_session":
             self.intra_session()
-        elif task == "inter-session":
+        elif task == "inter_session":
             self.inter_session()
-        elif task == "inter-subject":
+        elif task == "inter_subject":
             self.inter_subject()
         else:
             raise ValueError
@@ -114,7 +114,7 @@ class Solver():
             for i, subject in enumerate(subjects):
                 for j, session in enumerate(sessions):
                     model = self.get_model()
-                    path = os.path.join(self.args.model_path, f"trained-{self.args.dataset_name}-subject{subject}-session{session}.pkl")
+                    path = os.path.join(self.args.model_path, f"{self.args.dataset_name}_{subject}_{session}_{self.args.window_size}_{self.args.window_step}.pkl")
                     if os.path.exists(path):
                         model.load_state_dict(torch.load(path))
                         test_trials = self.args.test_trials
@@ -164,7 +164,7 @@ class Solver():
 
         self.logger.info(f"Begin train")
 
-        path = os.path.join(self.args.model_path, f"trained-{self.args.dataset_name}-subject{subject}-session{session}.pkl")
+        path = os.path.join(self.args.model_path, f"{self.args.dataset_name}_{subject}_{session}_{self.args.window_size}_{self.args.window_step}.pkl")
         if os.path.exists(path):
             last_model = self.get_model()
             last_model.load_state_dict(torch.load(path))
