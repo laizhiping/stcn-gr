@@ -22,7 +22,7 @@ dataset
   - bandmyo
 stcn-gr
   - config
-  - stcn
+  - solver
   - log
   - model
   - runs
@@ -33,11 +33,7 @@ The dataset file *.mat* includes the sEMG channel data and the shape is *num_fra
 ##### 3. Train/Test
 Please run the command:
 ```
-python run.py -cfg config/capgmyo.yaml -sg train [options]
-```
-or
-```
-python run.py --config config/capgmyo.yaml --stage train [options]
+python3 run.py -cfg config/capgmyo.yaml -sg train [options]
 ```
 
 *-cfg/--config* indicates the path of configuration file, *-sg/--stage* indicates stage (**train** or **test**), *options* can be *-s/-ne/-wz/-ws/-bs*, and more details can be seen in *run.py*.

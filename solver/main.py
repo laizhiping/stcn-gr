@@ -17,14 +17,14 @@ class Solver():
         self.init_device()
         self.check_dirs()
         self.get_logger_writer()
-        self.get_model()
         self.dump_info()
 
     def dump_info(self):
         for k, v in vars(self.args).items():
             self.logger.info(f"{k}: {v}")
-        
-        self.logger.info(f"{self.model}")
+
+        model = self.get_model()
+        self.logger.info(f"{model}")
 
     def init_device(self):
         self.device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
@@ -94,16 +94,16 @@ class Solver():
                 for j, session in enumerate(sessions):
                     self.logger.info(f"Begin training subject {subject} session {session}")
                     self.logger.info(f"{subject}, {session}, {gestures}, {train_trials}, {test_trials}")
-                    self.model = self.get_model()
+                    model = self.get_model()
                     # path = os.path.join(self.args.model_path, f"pretrain-{self.args.dataset_name}.pkl")
                     # if self.args.need_pretrain:
                     #     if os.path.exists(path):
                     #         self.model.load_state_dict(torch.load(path))
                     #         self.logger.info("load pretrain model successfully")
 
-                    self.train_loader = self.get_loader([subject], [session], gestures, train_trials)
-                    self.test_loader = self.get_loader([subject], [session], gestures, test_trials)
-                    trial_acc = self.train(subject, session)
+                    train_loader = self.get_loader([subject], [session], gestures, train_trials)
+                    test_loader = self.get_loader([subject], [session], gestures, test_trials)
+                    trial_acc = self.train(subject, session, model, train_loader, test_loader)
                     accuracy[i][j] = trial_acc
             self.logger.info(f"All session accuracy:\n {accuracy}")
             self.logger.info(f"All subject average accuracy:\n {accuracy.mean()}")
@@ -113,14 +113,14 @@ class Solver():
             accuracy = np.zeros((len(subjects), len(sessions)))
             for i, subject in enumerate(subjects):
                 for j, session in enumerate(sessions):
-                    self.model = self.get_model()
+                    model = self.get_model()
                     path = os.path.join(self.args.model_path, f"trained-{self.args.dataset_name}-subject{subject}-session{session}.pkl")
                     if os.path.exists(path):
-                        self.model.load_state_dict(torch.load(path))
+                        model.load_state_dict(torch.load(path))
                         test_trials = self.args.test_trials
-                        self.test_loader = self.get_loader([subject], [session], gestures, test_trials)
-                        self.get_optimizer()
-                        metric = self.test()
+                        test_loader = self.get_loader([subject], [session], gestures, test_trials)
+                        criterion = torch.nn.CrossEntropyLoss()
+                        metric = self.test(model, test_loader, criterion)
                         test_last_acc = metric["accuracy"]
                         self.logger.info(f"Test subject {subject} session {session}: {test_last_acc}")
                         accuracy[i][j] = test_last_acc
@@ -145,45 +145,61 @@ class Solver():
         return data_loader
 
 
-    def train(self, subject, session):
-        self.logger.info(f"Begin train")
-        self.get_optimizer()
-        path = os.path.join(self.args.model_path, f"trained-{self.args.dataset_name}-subject{subject}-session{session}.pkl")
-        metric = self.test()
-        init_acc = metric["accuracy"]
+    def train(self, subject, session, model, train_loader, test_loader):
+        criterion = torch.nn.CrossEntropyLoss()
+        if self.args.optimizer == "SGD":
+            optimizer = torch.optim.SGD(
+                model.parameters(),
+                lr=self.args.base_lr,
+                momentum=0.9,
+                weight_decay=self.args.weight_decay)
+        elif self.args.optimizer == "Adam":
+            optimizer = torch.optim.Adam(
+                model.parameters(),
+                lr=self.args.base_lr,
+                weight_decay=self.args.weight_decay)
+        else:
+            raise ValueError()
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=self.args.milestones, gamma=self.args.gamma)
 
-        if not os.path.exists(path):
-            self.model.load_state_dict(torch.load(path))
-            metric = self.test()
+        self.logger.info(f"Begin train")
+
+        path = os.path.join(self.args.model_path, f"trained-{self.args.dataset_name}-subject{subject}-session{session}.pkl")
+        if os.path.exists(path):
+            last_model = self.get_model()
+            last_model.load_state_dict(torch.load(path))
+            metric = self.test(last_model, test_loader, criterion)
             last_acc = metric["accuracy"]
         else:
             last_acc = 0
+        metric = self.test(model, test_loader, criterion)
+        init_acc = metric["accuracy"]
 
         self.logger.info("Initial: {}, last {}".format(init_acc, last_acc))
 
         best_acc = last_acc
         for epoch in range(1, self.args.num_epochs+1):
-            self.model.train()
+            model.train()
             epoch_loss = 0
             correct = 0
             true_label = []
             pred_label = []
-            self.train_loader.dataset.shuffle()
-            for step, (x, y) in enumerate(self.train_loader):
+            train_loader.dataset.shuffle()
+            for step, (x, y) in enumerate(train_loader):
                 x = x.float().to(self.device)
                 y = y.to(self.device)
-                output = self.model(x)
-                loss = self.criterion(output, y)
-                self.optimizer.zero_grad()
+                output = model(x)
+                loss = criterion(output, y)
+                optimizer.zero_grad()
                 loss.backward()
-                self.optimizer.step()
+                optimizer.step()
                 epoch_loss += loss.item()
                 correct += (output.argmax(dim=1) == y).sum()
                 true_label.extend(y.tolist())
                 pred_label.extend(output.argmax(dim=1).tolist())
-            self.scheduler.step()
-            train_acc = 1.0 * correct / len(self.train_loader.dataset)
-            metric = self.test()
+            scheduler.step()
+            train_acc = 1.0 * correct / len(train_loader.dataset)
+            metric = self.test(model, test_loader, criterion)
             if True or epoch == self.args.num_epochs:
                 # self.draw_confusion(true_label, pred_label, "train")
                 # self.draw_confusion(metric["true_label"], metric["pred_label"], "test")
@@ -191,7 +207,7 @@ class Solver():
 
             if metric["accuracy"] > best_acc:
                 best_acc = metric["accuracy"]
-                torch.save(self.model.state_dict(), path)
+                torch.save(model.state_dict(), path)
 
             self.writer.add_scalars(main_tag="loss", tag_scalar_dict={"train_loss": epoch_loss, "valid_loss": metric["loss"]},
                                global_step=epoch)
@@ -199,24 +215,24 @@ class Solver():
                                global_step= epoch)
             self.logger.info("Epoch [{:5d}/{:5d}]\t train_loss: {:.08f}\t test_loss: {:.08f}\t\t train_accuracy: {:.06f} [{}/{}]\t test_accuracy: {:.06f} [{}/{}]"
                         .format(epoch, self.args.num_epochs, epoch_loss, metric["loss"],
-                                train_acc, correct, len(self.train_loader.dataset),
+                                train_acc, correct, len(train_loader.dataset),
                                 metric["accuracy"], metric["correct"], metric["all"]))
 
         self.logger.info(f"Best: {best_acc}")
         return best_acc
 
-    def test(self):
-        self.model.eval()
+    def test(self, model, test_loader, criterion):
+        model.eval()
         metric = {}
         loss = 0
         correct = 0
         true_label = []
         pred_label = []
-        for (x, y) in self.test_loader:
+        for (x, y) in test_loader:
             x = x.float().to(self.device)
             y = y.to(self.device)
-            output = self.model(x)
-            loss1 = self.criterion(output, y)
+            output = model(x)
+            loss1 = criterion(output, y)
             loss += loss1.item()
             correct += (output.argmax(dim=1) == y).sum()
 
@@ -226,8 +242,8 @@ class Solver():
             del output
 
         metric["correct"] = correct
-        metric["all"] = len(self.test_loader.dataset)
-        metric["accuracy"] = correct*1.0 / len(self.test_loader.dataset)
+        metric["all"] = len(test_loader.dataset)
+        metric["accuracy"] = correct*1.0 / len(test_loader.dataset)
         metric["loss"] = loss
         metric["pred_label"] = pred_label
         metric["true_label"] = true_label
@@ -264,7 +280,7 @@ class Solver():
         # plt.show()
 
     def get_optimizer(self):
-        self.criterion = torch.nn.CrossEntropyLoss()
+        criterion = torch.nn.CrossEntropyLoss()
 
         if self.args.optimizer == "SGD":
             self.optimizer = torch.optim.SGD(
@@ -281,5 +297,4 @@ class Solver():
             raise ValueError()
 
         self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=self.args.milestones, gamma=self.args.gamma)
-
 
