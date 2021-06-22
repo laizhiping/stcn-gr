@@ -1,9 +1,9 @@
 import os
-from sys import path_hooks
 import time
-import torch
-import numpy as np
 import random
+import torch
+import torch.nn as nn
+import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 
 from solver.utils import log, data_reader
@@ -23,7 +23,8 @@ class Solver():
         for k, v in vars(self.args).items():
             self.logger.info(f"{k}: {v}")
 
-        model = self.get_model()
+        num_gestures= len(self.args.gestures)
+        model = stcn.STCN(num_channels=1, num_points=self.args.num_channels, num_classes=num_gestures)
         self.logger.info(f"{model}")
 
     def init_device(self):
@@ -52,11 +53,6 @@ class Solver():
         file_name = self.args.dataset_name + f"-{t}"
         self.logger = log.get_logger(self.args.log_path, file_name+".log")
         self.writer = SummaryWriter(os.path.join(self.args.tb_path, file_name))
-
-    def get_model(self):
-        num_gestures= len(self.args.gestures)
-        model = stcn.STCN(num_channels=1, num_points=self.args.num_channels, num_classes=num_gestures)
-        return model.to(self.device)
 
 
     def start(self, task):
@@ -94,7 +90,11 @@ class Solver():
                 for j, session in enumerate(sessions):
                     self.logger.info(f"Begin training subject {subject} session {session}")
                     self.logger.info(f"{subject}, {session}, {gestures}, {train_trials}, {test_trials}")
-                    model = self.get_model()
+
+                    num_gestures= len(self.args.gestures)
+                    model = stcn.STCN(num_channels=1, num_points=self.args.num_channels, num_classes=num_gestures)
+                    model = nn.DataParallel(model)
+                    model.to(self.device)
                     # path = os.path.join(self.args.model_path, f"pretrain-{self.args.dataset_name}.pkl")
                     # if self.args.need_pretrain:
                     #     if os.path.exists(path):
@@ -113,7 +113,9 @@ class Solver():
             accuracy = np.zeros((len(subjects), len(sessions)))
             for i, subject in enumerate(subjects):
                 for j, session in enumerate(sessions):
-                    model = self.get_model()
+                    num_gestures= len(self.args.gestures)
+                    model = stcn.STCN(num_channels=1, num_points=self.args.num_channels, num_classes=num_gestures)
+
                     path = os.path.join(self.args.model_path, f"{self.args.dataset_name}_{subject}_{session}_{self.args.window_size}_{self.args.window_step}.pkl")
                     if os.path.exists(path):
                         model.load_state_dict(torch.load(path))
@@ -166,7 +168,9 @@ class Solver():
 
         path = os.path.join(self.args.model_path, f"{self.args.dataset_name}_{subject}_{session}_{self.args.window_size}_{self.args.window_step}.pkl")
         if os.path.exists(path):
-            last_model = self.get_model()
+            num_gestures= len(self.args.gestures)
+            last_model = stcn.STCN(num_channels=1, num_points=self.args.num_channels, num_classes=num_gestures)
+            last_model.to(self.device)
             last_model.load_state_dict(torch.load(path))
             metric = self.test(last_model, test_loader, criterion)
             last_acc = metric["accuracy"]
