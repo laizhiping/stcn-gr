@@ -115,6 +115,7 @@ class Solver():
                 for j, session in enumerate(sessions):
                     num_gestures= len(self.args.gestures)
                     model = stcn.STCN(num_channels=1, num_points=self.args.num_channels, num_classes=num_gestures)
+                    model.to(self.device)
 
                     path = os.path.join(self.args.model_path, f"{self.args.dataset_name}_{subject}_{session}_{self.args.window_size}_{self.args.window_step}.pkl")
                     if os.path.exists(path):
