@@ -130,7 +130,7 @@ class STCB(nn.Module):
             self.rb = lambda x: 0
         elif (in_channels == out_channels) and (stride == 1):
             self.rb = lambda x: x
-        else: # rb好像不太对
+        else:
             self.rb = TCN(in_channels, out_channels, kernel_size=1, stride=stride)
 
     def forward(self, x):
