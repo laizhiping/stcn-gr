@@ -93,7 +93,7 @@ class Solver():
 
                     num_gestures= len(self.args.gestures)
                     model = stcn.STCN(num_channels=1, num_points=self.args.num_channels, num_classes=num_gestures)
-                    model = nn.DataParallel(model)
+                    # model = nn.DataParallel(model)
                     model.to(self.device)
                     # path = os.path.join(self.args.model_path, f"pretrain-{self.args.dataset_name}.pkl")
                     # if self.args.need_pretrain:
