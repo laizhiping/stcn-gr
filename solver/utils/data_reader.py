@@ -45,8 +45,8 @@ class DataReader(torch.utils.data.Dataset):
         y = self.y[trial_index]
         x = np.expand_dims(x, axis=0) # (1, frame, channel)
 
-        if self.args.dataset_name in ["capgmyo_dba", "capgmyo_dbb", "bandmyo", "ninapro"]:
-            y = y - 1
+        # if self.args.dataset_name in ["capgmyo_dba", "capgmyo_dbb", "bandmyo", "ninapro"]:
+        y = y - 1
         return x, y
 
     def __len__(self):
